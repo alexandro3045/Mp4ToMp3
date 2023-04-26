@@ -1,0 +1,110 @@
+version: '3.7'
+
+volumes:
+  postgres_data:
+    driver: local
+  mysql_data:
+    driver: local
+
+services:
+  dbapp:
+    image: mysql:8.0
+    volumes:
+      - mysql_data:/var/lib/mysql
+    environment:
+      MYSQL_DATABASE: converter
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: admin
+      MYSQL_ROOT_PASSWORD: admin
+    networks:
+      - auth-network
+    ports:
+      - "3306:3306"
+  postgres:
+    image: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    networks:
+      - auth-network
+  keycloak:
+    image: quay.io/keycloak/keycloak:legacy
+    container_name: dbk-keycloak
+    hostname: keycloak
+    environment:
+      DB_VENDOR: POSTGRES
+      DB_ADDR: postgres
+      DB_DATABASE: keycloak
+      DB_USER: keycloak
+      DB_SCHEMA: public
+      DB_PASSWORD: password
+      KEYCLOAK_USER: admin
+      KEYCLOAK_PASSWORD: Pa55w0rd
+    ports:
+      - "8180:8080"
+    depends_on:
+      - postgres
+    networks:
+      - auth-network
+  minio:
+    image: quay.io/minio/minio
+    ports:
+      - "9000:9000"
+      - "9090:9090"
+    volumes:
+      - ~/minio/data:/data
+    networks:
+      - auth-network
+    environment:
+      MINIO_ROOT_USER: ROOTNAME
+      MINIO_ROOT_PASSWORD: CHANGEME123
+    command: server /data --console-address ":9090"
+  rabbitmq3:
+    container_name: "rabbitmq"
+    image: rabbitmq:3.8-management-alpine
+    environment:
+      - RABBITMQ_DEFAULT_USER=myuser
+      - RABBITMQ_DEFAULT_PASS=mypassword
+    volumes:
+      - ~/.docker-conf/rabbitmq/data/:/var/lib/rabbitmq/
+      - ~/.docker-conf/rabbitmq/log/:/var/log/rabbitmq
+    ports:
+      # AMQP protocol port
+      - '5672:5672'
+      # HTTP management UI
+      - '15672:15672'
+    networks:
+      - auth-network
+  krakend:
+    image: devopsfaith/krakend:2.0.6
+    ports:
+      - "9091:9091"
+    volumes:
+      - ./krakend.json:/etc/krakend/krakend.json
+    networks:
+      - auth-network
+  database:
+    image: postgres:12-alpine
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_DB: greeting
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+  application:
+    image: quarkus-showcase:latest
+    ports:
+      - 8080:8080
+    depends_on:
+      - database
+    environment:
+      POSTGRES_URL: jdbc:postgresql://database:5432/greeting
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+
+networks:
+  auth-network:
+    driver: bridge
